@@ -1,6 +1,7 @@
 import os
 import pygame
 import sys
+from character import Character
 
 # Initialize Pygame
 pygame.init()
@@ -28,15 +29,14 @@ fight_img = pygame.transform.scale(fight_img, (200, 200))
 kick_img = pygame.transform.scale(kick_img, (200, 200))
 boss_img = pygame.transform.scale(boss_img, (300, 300))
 
-# Flipped images
-idle_img_flipped = pygame.transform.flip(idle_img, True, False)
-fight_img_flipped = pygame.transform.flip(fight_img, True, False)
-kick_img_flipped = pygame.transform.flip(kick_img, True, False)
-
 # Character setup
-character_img = idle_img
-character_rect = character_img.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-facing_left = False
+character = Character(
+    idle_img=idle_img,
+    fight_img=fight_img,
+    kick_img=kick_img,
+    facing_left=False,
+    pos=(WIDTH // 2, HEIGHT // 2)
+)
 
 # Boss setup
 boss_rect = boss_img.get_rect(midright=(WIDTH - 50, HEIGHT // 2))
@@ -69,30 +69,13 @@ BOSS_HIT_DURATION = 200  # milliseconds
 while True:
     screen.blit(background_img, (0, 0))
 
-    # Default to idle
-    character_img = idle_img_flipped if facing_left else idle_img
     keys = pygame.key.get_pressed()
-
-    # Movement
-    if keys[pygame.K_LEFT]:
-        character_rect.x -= 5
-        character_img = fight_img_flipped
-        facing_left = True
-    elif keys[pygame.K_RIGHT]:
-        character_rect.x += 5
-        character_img = fight_img
-        facing_left = False
-    elif keys[pygame.K_UP]:
-        character_rect.y -= 5
-        character_img = fight_img_flipped if facing_left else fight_img
-    elif keys[pygame.K_DOWN]:
-        character_rect.y += 5
-        character_img = fight_img_flipped if facing_left else fight_img
+    character.update(keys)
 
     # Kick attack
     if keys[pygame.K_x]:
-        character_img = kick_img_flipped if facing_left else kick_img
-        if character_rect.colliderect(boss_rect) and boss_health > 0:
+        character.kick()
+        if character.rect.colliderect(boss_rect) and boss_health > 0:
             boss_health -= 1  # Deal damage
             boss_hit = True
             boss_hit_timer = pygame.time.get_ticks()
@@ -138,6 +121,7 @@ while True:
             sys.exit()
 
     # Draw player
-    screen.blit(character_img, character_rect)
+    character.draw(screen)
+
     pygame.display.flip()
     clock.tick(FPS)
