@@ -24,8 +24,8 @@ fix/your-name-bug-description
 ```
 
 ✅ Examples:
-- feature/ana-player-animation  
-- fix/vasile-collision-bug
+- feature/jhon-player-animation  
+- fix/jhon-collision-bug
 
 🛠️ Create Your Branch:
 ```bash
