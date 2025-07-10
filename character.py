@@ -14,27 +14,41 @@ class Character:
         self.state = "idle"
         self.rect = self.images["idle"].get_rect(center=pos)
 
-    def handle_input(self, keys):
+    def handle_input(self, keys, dt=1.0, allow_attack=True):
         moved = False
-        if keys[pygame.K_LEFT]:
-            self.rect.x -= 5
+        speed = 20 * dt  # viteza marita pentru bossfight, ajustabil
+        dx = 0
+        dy = 0
+        # Miscare combinata (diagonala, smooth, nu se anuleaza sus/jos sau stanga/dreapta)
+        left = keys[pygame.K_LEFT] or keys[pygame.K_a]
+        right = keys[pygame.K_RIGHT] or keys[pygame.K_d]
+        up = keys[pygame.K_UP] or keys[pygame.K_w]
+        down = keys[pygame.K_DOWN] or keys[pygame.K_s]
+        if left:
+            dx -= 1
             self.facing_left = True
-            self.state = "fight"
-            moved = True
-        elif keys[pygame.K_RIGHT]:
-            self.rect.x += 5
+        if right:
+            dx += 1
             self.facing_left = False
+        if up:
+            dy -= 1
+        if down:
+            dy += 1
+        # Normalizeaza pentru diagonala (dar permite miscarea simultana sus/jos si stanga/dreapta)
+        if dx != 0 or dy != 0:
+            length = (dx**2 + dy**2) ** 0.5
+            if length > 0:
+                dx = dx / length * speed
+                dy = dy / length * speed
+            self.rect.x += int(dx)
+            self.rect.y += int(dy)
             self.state = "fight"
             moved = True
-        elif keys[pygame.K_UP]:
-            self.rect.y -= 5
-            self.state = "fight"
+        # Atac (X sau F) - doar daca allow_attack e True
+        if allow_attack and (keys[pygame.K_x] or keys[pygame.K_f]):
+            self.kick()
             moved = True
-        elif keys[pygame.K_DOWN]:
-            self.rect.y += 5
-            self.state = "fight"
-            moved = True
-        else:
+        if not moved:
             self.state = "idle"
         return moved
 
@@ -47,8 +61,8 @@ class Character:
             key += "_flipped"
         return self.images[key]
 
-    def update(self, keys):
-        self.handle_input(keys)
+    def update(self, keys, dt=1.0, allow_attack=True):
+        self.handle_input(keys, dt, allow_attack=allow_attack)
 
     def draw(self, surface):
         surface.blit(self.get_image(), self.rect)
