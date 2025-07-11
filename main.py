@@ -194,14 +194,14 @@ player_max_health = 100
 
 # Red balls (projectiles) thrown by boss
 projectiles = []  # Each projectile: {'rect': pygame.Rect, 'vx': float, 'vy': float}
-PROJECTILE_SPEED = 4  # px per frame (aprox 240 px/sec at 60fps)
+PROJECTILE_SPEED = 8  # px per frame (aprox 480 px/sec la 60fps, mai rapid)
 PROJECTILE_SIZE = 20
 PROJECTILE_COOLDOWN = 2200  # ms, delay mai mare
 last_projectile_time = 0
 
 # Clock
 clock = pygame.time.Clock()
-FPS = 120
+FPS = 60
 
 
 # Font
@@ -235,6 +235,8 @@ BOSS_CONTACT_COOLDOWN = 1200  # ms
 boss_contact_last_time = 0
 
 # Game loop
+last_attack_time = 0  # ms
+ATTACK_COOLDOWN = 300  # ms
 while True:
     screen.blit(background_img, (0, 0))
     keys = pygame.key.get_pressed()
@@ -308,8 +310,8 @@ while True:
 
     # Move projectiles and check collision with player
     for proj in projectiles[:]:
-        proj['rect'].x += proj['vx'] * 0.7  
-        proj['rect'].y += proj['vy'] * 0.7
+        proj['rect'].x += proj['vx'] * 1.2  # mai rapid
+        proj['rect'].y += proj['vy'] * 1.2
         # Remove if off screen
         if (proj['rect'].right < 0 or proj['rect'].left > WIDTH or
             proj['rect'].bottom < 0 or proj['rect'].top > HEIGHT):
@@ -330,22 +332,8 @@ while True:
     if player_hit and pygame.time.get_ticks() - player_hit_timer > PLAYER_HIT_DURATION:
         player_hit = False
 
-    # Kick attack (nu mai poti lovi bossul daca playerul e mort)
-    if player_health > 0 and (keys[pygame.K_x] or keys[pygame.K_f]) and boss_health > 0:
-        character.kick()
-        if character.rect.colliderect(boss_rect):
-            boss_health -= 1  # Deal damage
-            # Kickback boss: impinge boss-ul inapoi pe axa x
-            if character.rect.centerx < boss_rect.centerx:
-                boss_rect.x += 20  # impinge spre dreapta
-            else:
-                boss_rect.x -= 20  # impinge spre stanga
-            # Scade viteza boss-ului temporar la lovitura
-            boss_speed = max(1, boss_speed - 1)
-            boss_hit = True
-            boss_hit_timer = pygame.time.get_ticks()
-            if boss_health <= 0:
-                enemy_felled = True
+    # Kick/punch attack moved to event handling below
+
 
     # Draw boss if alive
     if boss_health > 0:
@@ -423,11 +411,23 @@ while True:
     pbar_height = 12
     pbar_x = character.rect.centerx - pbar_width // 2
     pbar_y = character.rect.top - 20
+    # Health bar
     pygame.draw.rect(screen, (255, 0, 0), (pbar_x, pbar_y, pbar_width, pbar_height))
     pygame.draw.rect(
         screen,
         (0, 255, 0),
         (pbar_x, pbar_y, int(pbar_width * (player_health / player_max_health)), pbar_height)
+    )
+    # Stamina bar (portocaliu) sub healthbar
+    sbar_width = pbar_width
+    sbar_height = 8
+    sbar_x = pbar_x
+    sbar_y = pbar_y + pbar_height + 4  # 4px sub healthbar
+    pygame.draw.rect(screen, (180, 90, 0), (sbar_x, sbar_y, sbar_width, sbar_height))  # background portocaliu inchis
+    pygame.draw.rect(
+        screen,
+        (255, 140, 0),  # portocaliu
+        (sbar_x, sbar_y, int(sbar_width * (character.stamina / 100)), sbar_height)
     )
     # Show player name above healthbar
     player_label = font.render(player_name, True, (255, 255, 255))
@@ -465,7 +465,48 @@ while True:
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-
+        # Procesare atacuri pe eveniment
+        if player_health > 0 and boss_health > 0:
+            # Boss damage logic la kick/punch + animatie corecta + verificare stamina + directie + cooldown
+            if event.type == pygame.KEYDOWN and character.rect.colliderect(boss_rect):
+                boss_is_right = boss_rect.centerx > character.rect.centerx
+                boss_is_left = boss_rect.centerx < character.rect.centerx
+                now = pygame.time.get_ticks()
+                if now - last_attack_time >= ATTACK_COOLDOWN:
+                    if event.key == pygame.K_x:
+                        if character.stamina >= 20:
+                            # Verifica directia
+                            if (boss_is_right and not character.facing_left) or (boss_is_left and character.facing_left):
+                                character.kick()  # seteaza animatia corecta
+                                boss_health -= 5  # Deal damage
+                                if boss_is_right:
+                                    boss_rect.x += 20
+                                else:
+                                    boss_rect.x -= 20
+                                boss_speed = max(1, boss_speed - 1)
+                                boss_hit = True
+                                boss_hit_timer = pygame.time.get_ticks()
+                                last_attack_time = now
+                                if boss_health <= 0:
+                                    enemy_felled = True
+                    elif event.key == pygame.K_f:
+                        if character.stamina >= 10:
+                            # Verifica directia
+                            if (boss_is_right and not character.facing_left) or (boss_is_left and character.facing_left):
+                                character.punch()  # seteaza animatia corecta
+                                boss_health -= 2.5  # Deal damage
+                                if boss_is_right:
+                                    boss_rect.x += 20
+                                else:
+                                    boss_rect.x -= 20
+                                boss_speed = max(1, boss_speed - 1)
+                                boss_hit = True
+                                boss_hit_timer = pygame.time.get_ticks()
+                                last_attack_time = now
+                                if boss_health <= 0:
+                                    enemy_felled = True
+            else:
+                character.handle_event(event)
         # Allow quitting with ESC or restart with R on game over
         if player_health <= 0 and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
