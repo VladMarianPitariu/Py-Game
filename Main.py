@@ -1,5 +1,3 @@
-
-
 import os
 import pygame
 import sys
@@ -142,6 +140,7 @@ WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("2D Game: Main Character vs Boss")
 
+
 # Load images from img folder
 background_img = pygame.image.load(os.path.join(IMG_DIR, "background.png"))
 background_img = pygame.transform.scale(background_img, (WIDTH, HEIGHT))
@@ -150,12 +149,23 @@ idle_img = pygame.image.load(os.path.join(IMG_DIR, "idle.png"))
 fight_img = pygame.image.load(os.path.join(IMG_DIR, "fight-v2.png"))
 kick_img = pygame.image.load(os.path.join(IMG_DIR, "kick-v1.png"))
 boss_img = pygame.image.load(os.path.join(IMG_DIR, "king.png"))  # Boss image
+door_img = pygame.image.load(os.path.join(IMG_DIR, "USA.png"))  # Door image
+# Load and resize key sprite (very small)
+key_img = pygame.image.load(os.path.join(IMG_DIR, "cheie.png"))
+key_img = pygame.transform.scale(key_img, (100, 100))
+
+
+# Dead sprite for player
+dead_img = pygame.image.load(os.path.join(IMG_DIR, "Dead.png"))
+dead_img = pygame.transform.scale(dead_img, (200, 200))
 
 # Resize images
 idle_img = pygame.transform.scale(idle_img, (200, 200))
 fight_img = pygame.transform.scale(fight_img, (200, 200))
 kick_img = pygame.transform.scale(kick_img, (200, 200))
 boss_img = pygame.transform.scale(boss_img, (300, 300))
+# Resize door image
+door_img = pygame.transform.scale(door_img, (200, 300))
 
 # Character setup
 character = Character(
@@ -166,17 +176,17 @@ character = Character(
     pos=(WIDTH // 2, HEIGHT // 2)
 )
 
-# Boss setup
-
-# Boss setup
+ # Boss setup
 boss_rect = boss_img.get_rect(midright=(WIDTH - 50, HEIGHT // 2))
 boss_health = 100
 boss_max_health = 100
-boss_speed = 3
+boss_speed = 1  # mai incet
 boss_direction = -1  # -1 = left, 1 = right
 boss_move_timer = 0
 BOSS_MOVE_INTERVAL = 1200  # ms
 enemy_felled = False
+
+
 
 # Player health
 player_health = 100
@@ -186,7 +196,7 @@ player_max_health = 100
 projectiles = []  # Each projectile: {'rect': pygame.Rect, 'vx': float, 'vy': float}
 PROJECTILE_SPEED = 4  # px per frame (aprox 240 px/sec at 60fps)
 PROJECTILE_SIZE = 20
-PROJECTILE_COOLDOWN = 1200  # ms
+PROJECTILE_COOLDOWN = 2200  # ms, delay mai mare
 last_projectile_time = 0
 
 # Clock
@@ -201,190 +211,6 @@ font = pygame.font.SysFont(None, 48)
 # Get player name before starting game loop
 player_name = get_player_name(screen, font)
 
-# --- Tutorial screen ---
-def run_tutorial(screen, font, character):
-    # Fundal animat cu gradient si stele mari si mici
-    tutorial_bg = pygame.Surface((WIDTH, HEIGHT))
-    def draw_animated_bg(surface, t):
-        # Gradient vertical cu nuante mov-albastru si valuri animate
-        for y in range(HEIGHT):
-            c = int(40 + 80 * (y / HEIGHT) + 60 * math.sin(t*0.008 + y*0.025))
-            c = max(0, min(255, c))
-            blue = max(0, min(255, 120 + c//2))
-            pygame.draw.line(surface, (c//2, c, blue), (0, y), (WIDTH, y))
-        # Valuri colorate animate
-        for i in range(3):
-            wave_color = [(120,120,255,60), (180,120,255,60), (120,255,255,60)][i]
-            wave_surf = pygame.Surface((WIDTH, 80), pygame.SRCALPHA)
-            for x in range(WIDTH):
-                y = int(30 + 18*math.sin(t*0.012 + x*0.02 + i*1.5))
-                pygame.draw.circle(wave_surf, wave_color, (x, y+30), 2)
-            surface.blit(wave_surf, (0, 120 + i*60), special_flags=pygame.BLEND_RGBA_ADD)
-        # Stele mari cu glow
-        for i in range(10):
-            star_x = int((WIDTH//10)*i + 80*math.sin(t*0.008 + i))
-            star_y = int((HEIGHT//10)*i + 60*math.cos(t*0.009 + i + t*0.01))
-            for r in range(8,0,-2):
-                alpha = int(30 + 25*r)
-                pygame.draw.circle(surface, (255,255,220,alpha), (star_x, star_y), r)
-        # Stele mici
-        for i in range(30):
-            star_x = int((WIDTH//30)*i + 30*math.sin(t*0.012 + i))
-            star_y = int((HEIGHT//30)*i + 20*math.cos(t*0.014 + i + t*0.01))
-            pygame.draw.circle(surface, (180,220,255), (star_x, star_y), 2)
-    # Door sprite (simple rectangle for now)
-    door_rect = pygame.Rect(WIDTH-80, HEIGHT//2-60, 60, 120)
-    door_color = (120, 80, 40)
-    door_glow = (200, 180, 80)
-    # Tutorial state
-    running = True
-    show_door = False
-    show_ready = False
-    ready_confirmed = False
-    move_done = False
-    kick_done = False
-    clock = pygame.time.Clock()
-    char_start_pos = (WIDTH//6, HEIGHT//2)
-    character.rect.center = char_start_pos
-    # Particule pentru efecte vizuale
-    particles = []
-    # Mini-obstacol: cutie pe care trebuie s-o "lovesti" cu X/F
-    box_rect = pygame.Rect(WIDTH//2 + 60, HEIGHT//2 + 40, 50, 50)
-    box_alive = True
-    box_hit_anim = 0
-    # Animatie text
-    instr_anim = 0
-    instr_anim_dir = 1
-    while running:
-        t = pygame.time.get_ticks()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if show_ready and event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_y):
-                    ready_confirmed = True
-        keys = pygame.key.get_pressed()
-        prev_pos = character.rect.topleft
-        # Miscare smooth si diagonala in tutorial, viteza mai mica
-        character.handle_input(keys, dt=0.5, allow_attack=not show_door)
-        if character.rect.topleft != prev_pos:
-            move_done = True
-            # Efect de particule la miscare
-            for _ in range(3):
-                particles.append({
-                    'x': character.rect.centerx,
-                    'y': character.rect.bottom,
-                    'vx': random.uniform(-1,1),
-                    'vy': random.uniform(1,2),
-                    'life': random.randint(12,18),
-                    'color': (180,180,255)
-                })
-        # Detecteaza atac pe cutie
-        if box_alive and (keys[pygame.K_x] or keys[pygame.K_f]) and character.rect.colliderect(box_rect):
-            box_alive = False
-            box_hit_anim = 12
-            # Efect de particule la cutie
-            for _ in range(18):
-                particles.append({
-                    'x': box_rect.centerx,
-                    'y': box_rect.centery,
-                    'vx': random.uniform(-2,2),
-                    'vy': random.uniform(-2,2),
-                    'life': random.randint(16,24),
-                    'color': (255,200,80)
-                })
-            kick_done = True
-        # Show door if both actions done
-        if move_done and kick_done:
-            show_door = True
-        # If at door, show ready prompt
-        if show_door and character.rect.colliderect(door_rect):
-            show_ready = True
-        # Update particule
-        for p in particles[:]:
-            p['x'] += p['vx']
-            p['y'] += p['vy']
-            p['vy'] += 0.12  # gravitate
-            p['life'] -= 1
-            if p['life'] <= 0:
-                particles.remove(p)
-        # Draw animated background
-        draw_animated_bg(tutorial_bg, t)
-        screen.blit(tutorial_bg, (0, 0))
-        # Draw box obstacle cu efect de glow si bounce
-        if box_alive:
-            pulse = 1.0 + 0.08*math.sin(t*0.02)
-            box_rect_anim = box_rect.inflate(int(8*pulse), int(8*pulse))
-            glow_surf = pygame.Surface((box_rect_anim.width+24, box_rect_anim.height+24), pygame.SRCALPHA)
-            for r in range(18,0,-4):
-                alpha = int(18 + 12*r)
-                rect = glow_surf.get_rect().inflate(-r, -r)
-                pygame.draw.ellipse(glow_surf, (255,220,80,alpha), rect)
-            screen.blit(glow_surf, (box_rect_anim.x-12, box_rect_anim.y-12), special_flags=pygame.BLEND_RGBA_ADD)
-            pygame.draw.rect(screen, (200,140,60), box_rect_anim, border_radius=10)
-            pygame.draw.rect(screen, (255,220,120), box_rect_anim, 3, border_radius=10)
-            # Animatie "pulse" la instructiune
-            if not kick_done and move_done:
-                pygame.draw.rect(screen, (255,255,80,80), box_rect_anim.inflate(16,16), border_radius=14)
-        elif box_hit_anim > 0:
-            # Cutia "explodeaza" in particule
-            box_hit_anim -= 1
-        # Draw door cu efect de glow si animatie de deschidere
-        if show_door:
-            door_anim = 1.0 + 0.08*math.sin(t*0.018)
-            door_rect_anim = door_rect.inflate(int(8*door_anim), int(8*door_anim))
-            glow = pygame.Surface((door_rect_anim.width+30, door_rect_anim.height+30), pygame.SRCALPHA)
-            for r in range(24,0,-6):
-                alpha = int(18 + 10*r)
-                rect = glow.get_rect().inflate(-r, -r)
-                pygame.draw.ellipse(glow, door_glow + (alpha,), rect)
-            screen.blit(glow, (door_rect_anim.x-15, door_rect_anim.y-15), special_flags=pygame.BLEND_RGBA_ADD)
-            pygame.draw.rect(screen, door_color, door_rect_anim, border_radius=14)
-            pygame.draw.rect(screen, (255,220,120), door_rect_anim, 4, border_radius=14)
-        # Draw character
-        character.draw(screen)
-        # Draw particles
-        for p in particles:
-            pygame.draw.circle(screen, p['color'], (int(p['x']), int(p['y'])), 3)
-        # Animated tutorial instructions
-        instr_font = pygame.font.SysFont(None, 38, bold=True)
-        instr_anim += 0.12 * instr_anim_dir
-        if instr_anim > 1.5 or instr_anim < -1.5:
-            instr_anim_dir *= -1
-        # Efect de glow la text
-        def draw_glow_text(txt, pos, color, glow_color=(255,255,120)):
-            for dx in range(-2,3):
-                for dy in range(-2,3):
-                    if dx==0 and dy==0: continue
-                    surf = instr_font.render(txt, True, glow_color)
-                    screen.blit(surf, (pos[0]+dx, pos[1]+dy))
-            surf = instr_font.render(txt, True, color)
-            screen.blit(surf, pos)
-        if not move_done:
-            instr = "Foloseste sagetile sau WASD pentru a te misca"
-            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
-        elif not kick_done:
-            instr = "Apasa X sau F pentru a ataca cutia!"
-            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
-        elif not show_ready:
-            instr = "Mergi la usa pentru a continua!"
-            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
-        if show_ready:
-            # Fade in effect
-            ready_font = pygame.font.SysFont(None, 60, bold=True)
-            ready_msg = "Are you ready?"
-            ready = ready_font.render(ready_msg, True, (255, 215, 0))
-            screen.blit(ready, (WIDTH//2 - ready.get_width()//2, HEIGHT//2 - 120))
-            sub = instr_font.render("Apasa ENTER sau SPACE pentru a incepe lupta!", True, (255,255,255))
-            screen.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2 - 60))
-        pygame.display.flip()
-        clock.tick(60)
-        if ready_confirmed:
-            running = False
-
-# Rulare tutorial inainte de boss fight
-run_tutorial(screen, font, character)
 
 # Add this function to tint a surface red (for boss)
 def tint_surface_red(surface, intensity=0.4):
@@ -404,21 +230,43 @@ PLAYER_HIT_DURATION = 400  # ms
 player_hit = False
 player_hit_timer = 0
 
+# Add a timer for boss contact damage
+BOSS_CONTACT_COOLDOWN = 1200  # ms
+boss_contact_last_time = 0
+
 # Game loop
 while True:
     screen.blit(background_img, (0, 0))
-
     keys = pygame.key.get_pressed()
-    # Foloseste dt pentru smooth movement si allow_attack True in bossfight
     dt = clock.get_time() / 16.67  # 1 frame = 16.67ms la 60fps
-    # Viteza mai mica in bossfight (ex: 22)
-    character.update(keys, dt=dt * 0.55, allow_attack=True)
+    now = pygame.time.get_ticks()
 
-    # Boss random movement
+    # Nu mai permite miscarea daca playerul e mort
+    if player_health > 0:
+        # Miscare player: nu mai bloca la boss, doar margini
+        character.update(keys, dt=dt * 0.55, allow_attack=True)
+        # Limiteaza playerul la marginea ecranului (in "mapa")
+        margin_left = 0
+        margin_right = WIDTH
+        margin_top = 85  # mai mare sus
+        margin_bottom = HEIGHT
+        if character.rect.left < margin_left:
+            character.rect.left = margin_left
+        if character.rect.right > margin_right:
+            character.rect.right = margin_right
+        if character.rect.top < margin_top:
+            character.rect.top = margin_top
+        if character.rect.bottom > margin_bottom:
+            character.rect.bottom = margin_bottom
+        # Nu mai bloca playerul la boss, poate trece peste (doar damage la coliziune)
+
+    
+   
+    # Boss random movement (mai incet)
     if boss_health > 0:
         now = pygame.time.get_ticks()
         if now - boss_move_timer > BOSS_MOVE_INTERVAL:
-            boss_speed = random.randint(2, 4)  # much slower, px per frame
+            boss_speed = random.randint(1, 2)  # mult mai incet, px per frame
             boss_direction = random.choice([-1, 1])
             boss_move_timer = now
         boss_rect.x += boss_speed * boss_direction
@@ -435,24 +283,32 @@ while True:
         if boss_rect.bottom > HEIGHT:
             boss_rect.bottom = HEIGHT
 
-    # Boss throws projectiles that follow the player
+    # Boss throws projectiles with different abilities (viteza mai mica)
     now = pygame.time.get_ticks()
     if boss_health > 0 and now - last_projectile_time > PROJECTILE_COOLDOWN:
         proj_x = boss_rect.centerx - PROJECTILE_SIZE // 2
         proj_y = boss_rect.centery
-        # Calculate direction vector towards player
         dx = character.rect.centerx - proj_x
         dy = character.rect.centery - proj_y
         dist = max((dx ** 2 + dy ** 2) ** 0.5, 1)
-        vx = PROJECTILE_SPEED * dx / dist
-        vy = PROJECTILE_SPEED * dy / dist
-        projectile_rect = pygame.Rect(proj_x, proj_y, PROJECTILE_SIZE, PROJECTILE_SIZE)
-        projectiles.append({'rect': projectile_rect, 'vx': vx, 'vy': vy})
+        vx = (PROJECTILE_SPEED * 0.5) * dx / dist  # viteza mai mica
+        vy = (PROJECTILE_SPEED * 0.5) * dy / dist
+
+        # Randomize ability type
+        ability = random.choice([
+            {'color': (255, 0, 0), 'size': 20, 'damage': 10},      # rosu, mic, damage mic
+            {'color': (255, 140, 0), 'size': 32, 'damage': 18},    # portocaliu, mediu, damage mediu
+            {'color': (0, 200, 255), 'size': 36, 'damage': 25},    # albastru, mare, damage mare
+            {'color': (255, 0, 255), 'size': 26, 'damage': 14},    # mov, mic, damage mediu
+            {'color': (255, 255, 0), 'size': 40, 'damage': 30},    # galben, foarte mare, damage foarte mare
+        ])
+        projectile_rect = pygame.Rect(proj_x, proj_y, ability['size'], ability['size'])
+        projectiles.append({'rect': projectile_rect, 'vx': vx, 'vy': vy, 'color': ability['color'], 'damage': ability['damage']})
         last_projectile_time = now
 
     # Move projectiles and check collision with player
     for proj in projectiles[:]:
-        proj['rect'].x += proj['vx'] * 0.7  # reduce projectile speed
+        proj['rect'].x += proj['vx'] * 0.7  
         proj['rect'].y += proj['vy'] * 0.7
         # Remove if off screen
         if (proj['rect'].right < 0 or proj['rect'].left > WIDTH or
@@ -460,9 +316,10 @@ while True:
             projectiles.remove(proj)
             continue
         # Collision with player (damage only if not recently hit)
-        if (proj['rect'].colliderect(character.rect) and boss_health > 0
-            and not player_hit):
-            player_health -= 10
+        if (proj['rect'].colliderect(character.rect) and boss_health > 0 and not player_hit):
+            # Damage in functie de tip
+            dmg = proj.get('damage', 10)
+            player_health -= dmg
             player_hit = True
             player_hit_timer = pygame.time.get_ticks()
             projectiles.remove(proj)
@@ -473,11 +330,18 @@ while True:
     if player_hit and pygame.time.get_ticks() - player_hit_timer > PLAYER_HIT_DURATION:
         player_hit = False
 
-    # Kick attack
-    if (keys[pygame.K_x] or keys[pygame.K_f]) and boss_health > 0:
+    # Kick attack (nu mai poti lovi bossul daca playerul e mort)
+    if player_health > 0 and (keys[pygame.K_x] or keys[pygame.K_f]) and boss_health > 0:
         character.kick()
         if character.rect.colliderect(boss_rect):
             boss_health -= 1  # Deal damage
+            # Kickback boss: impinge boss-ul inapoi pe axa x
+            if character.rect.centerx < boss_rect.centerx:
+                boss_rect.x += 20  # impinge spre dreapta
+            else:
+                boss_rect.x -= 20  # impinge spre stanga
+            # Scade viteza boss-ului temporar la lovitura
+            boss_speed = max(1, boss_speed - 1)
             boss_hit = True
             boss_hit_timer = pygame.time.get_ticks()
             if boss_health <= 0:
@@ -507,10 +371,52 @@ while True:
         label_rect = boss_label.get_rect()
         label_rect.midright = (bar_x - 10, bar_y + bar_height // 2)
         screen.blit(boss_label, label_rect)
+
     else:
-        # Boss defeated
-        text = font.render("Enemy Felled!", True, (255, 215, 0))
-        screen.blit(text, (WIDTH//2 - 100, HEIGHT//2 - 50))
+        # Draw key falling from above after boss defeated (simulate key drop)
+        global key_y, key_obtained
+        if 'key_y' not in globals():
+            key_y = 0
+            key_obtained = False
+        if not key_obtained:
+            key_x = boss_rect.centerx
+            key_y = min(key_y + 6, HEIGHT - 80)  # falls down
+            # Draw key sprite (small, falling)
+            key_falling_rect = key_img.get_rect(center=(key_x, key_y + 12))
+            screen.blit(key_img, key_falling_rect)
+            # Detect collision with player (only for falling key)
+            if character.rect.colliderect(key_falling_rect):
+                key_obtained = True
+        # Draw key as held by player (right hand area) ONLY if obtained
+        if key_obtained:
+            # Draw door much further to the right ONLY if key is obtained
+            door_offset = 120  # cât de mult "iese" din ecran
+            # SPAWN DOOR VISIBLE ON SCREEN, NOT OUTSIDE
+            door_x = min(WIDTH - 160, WIDTH + door_offset)  # asigură-te că e vizibilă
+            door_rect = door_img.get_rect(midleft=(door_x, HEIGHT // 2))
+            screen.blit(door_img, door_rect)
+            # Make a much smaller collider for the door (centered on the door)
+            door_collider = pygame.Rect(0, 0, 18, 36)  # și mai mic collider
+            door_collider.center = door_rect.center
+            # Draw key much closer to player's hand (overlap palm area)
+            key_hand_rect = key_img.get_rect(topleft=(character.rect.right - 75, character.rect.centery - 100))
+            screen.blit(key_img, key_hand_rect)
+
+            # Player can enter door ONLY if has key and is near door
+            if character.rect.colliderect(door_collider):
+                # Placeholder: clear screen and show new map message
+                screen.fill((30, 30, 60))
+                msg = font.render("MAPA 2 - Coming soon!", True, (255, 255, 0))
+                screen.blit(msg, (WIDTH//2 - msg.get_width()//2, HEIGHT//2 - 40))
+                pygame.display.flip()
+                pygame.time.wait(2000)
+                # Reset for demo: move player to center, remove key, respawn boss/door
+                character.rect.center = (WIDTH // 2, HEIGHT // 2)
+                key_y = 0
+                key_obtained = False
+                boss_health = boss_max_health
+                boss_rect.midright = (WIDTH - 50, HEIGHT // 2)
+                enemy_felled = False
 
     # Draw player health bar above player
     pbar_width = 80
@@ -529,20 +435,30 @@ while True:
     plabel_rect.midbottom = (character.rect.centerx, pbar_y)
     screen.blit(player_label, plabel_rect)
 
-    # Player hit visual effect (tint red only on sprite)
-    if player_hit:
-        # Get current player image
-        player_img = character.get_image().copy()
-        red_overlay = pygame.Surface(player_img.get_size(), pygame.SRCALPHA)
-        red_overlay.fill((255, 0, 0, 90))
-        player_img.blit(red_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
-        screen.blit(player_img, character.rect)
+    # Player mort: doar sprite-ul mort si mesajul, fara miscare sau efecte
+    if player_health <= 0:
+        dead_rect = dead_img.get_rect(center=character.rect.center)
+        screen.blit(dead_img, dead_rect)
+        game_over_font = pygame.font.SysFont(None, 80, bold=True)
+        game_over_text = game_over_font.render("YOU DIED", True, (200, 0, 0))
+        screen.blit(game_over_text, (WIDTH//2 - game_over_text.get_width()//2, HEIGHT//2 - 120))
+        sub_font = pygame.font.SysFont(None, 40)
+        sub_text = sub_font.render("Press R to restart or ESC to quit", True, (255, 255, 255))
+        screen.blit(sub_text, (WIDTH//2 - sub_text.get_width()//2, HEIGHT//2 - 40))
     else:
-        character.draw(screen)
+        # Player hit visual effect (tint red only on sprite)
+        if player_hit:
+            player_img = character.get_image().copy()
+            red_overlay = pygame.Surface(player_img.get_size(), pygame.SRCALPHA)
+            red_overlay.fill((255, 0, 0, 90))
+            player_img.blit(red_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            screen.blit(player_img, character.rect)
+        else:
+            character.draw(screen)
 
-    # Draw projectiles
+    # Draw projectiles (diferite culori si dimensiuni)
     for proj in projectiles:
-        pygame.draw.ellipse(screen, (255, 0, 0), proj['rect'])
+        pygame.draw.ellipse(screen, proj.get('color', (255, 0, 0)), proj['rect'])
 
     # Event handling
     for event in pygame.event.get():
@@ -550,8 +466,28 @@ while True:
             pygame.quit()
             sys.exit()
 
-    # Draw player (only if not hit, otherwise drawn above)
-    # ...existing code...
+        # Allow quitting with ESC or restart with R on game over
+        if player_health <= 0 and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                pygame.quit()
+                sys.exit()
+            if event.key == pygame.K_r:
+                # Reset all relevant game state
+                player_health = player_max_health
+                boss_health = boss_max_health
+                character.rect.center = (WIDTH // 2, HEIGHT // 2)
+                projectiles.clear()
+                boss_rect.midright = (WIDTH - 50, HEIGHT // 2)
+                boss_speed = 3
+                boss_direction = -1
+                boss_move_timer = 0
+                enemy_felled = False
+                player_hit = False
+                player_hit_timer = 0
+                boss_hit = False
+                boss_hit_timer = 0
+
+
 
     pygame.display.flip()
     clock.tick(FPS)
