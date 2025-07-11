@@ -201,7 +201,190 @@ font = pygame.font.SysFont(None, 48)
 # Get player name before starting game loop
 player_name = get_player_name(screen, font)
 
-## Tutorial removed as requested
+# --- Tutorial screen ---
+def run_tutorial(screen, font, character):
+    # Fundal animat cu gradient si stele mari si mici
+    tutorial_bg = pygame.Surface((WIDTH, HEIGHT))
+    def draw_animated_bg(surface, t):
+        # Gradient vertical cu nuante mov-albastru si valuri animate
+        for y in range(HEIGHT):
+            c = int(40 + 80 * (y / HEIGHT) + 60 * math.sin(t*0.008 + y*0.025))
+            c = max(0, min(255, c))
+            blue = max(0, min(255, 120 + c//2))
+            pygame.draw.line(surface, (c//2, c, blue), (0, y), (WIDTH, y))
+        # Valuri colorate animate
+        for i in range(3):
+            wave_color = [(120,120,255,60), (180,120,255,60), (120,255,255,60)][i]
+            wave_surf = pygame.Surface((WIDTH, 80), pygame.SRCALPHA)
+            for x in range(WIDTH):
+                y = int(30 + 18*math.sin(t*0.012 + x*0.02 + i*1.5))
+                pygame.draw.circle(wave_surf, wave_color, (x, y+30), 2)
+            surface.blit(wave_surf, (0, 120 + i*60), special_flags=pygame.BLEND_RGBA_ADD)
+        # Stele mari cu glow
+        for i in range(10):
+            star_x = int((WIDTH//10)*i + 80*math.sin(t*0.008 + i))
+            star_y = int((HEIGHT//10)*i + 60*math.cos(t*0.009 + i + t*0.01))
+            for r in range(8,0,-2):
+                alpha = int(30 + 25*r)
+                pygame.draw.circle(surface, (255,255,220,alpha), (star_x, star_y), r)
+        # Stele mici
+        for i in range(30):
+            star_x = int((WIDTH//30)*i + 30*math.sin(t*0.012 + i))
+            star_y = int((HEIGHT//30)*i + 20*math.cos(t*0.014 + i + t*0.01))
+            pygame.draw.circle(surface, (180,220,255), (star_x, star_y), 2)
+    # Door sprite (simple rectangle for now)
+    door_rect = pygame.Rect(WIDTH-80, HEIGHT//2-60, 60, 120)
+    door_color = (120, 80, 40)
+    door_glow = (200, 180, 80)
+    # Tutorial state
+    running = True
+    show_door = False
+    show_ready = False
+    ready_confirmed = False
+    move_done = False
+    kick_done = False
+    clock = pygame.time.Clock()
+    char_start_pos = (WIDTH//6, HEIGHT//2)
+    character.rect.center = char_start_pos
+    # Particule pentru efecte vizuale
+    particles = []
+    # Mini-obstacol: cutie pe care trebuie s-o "lovesti" cu X/F
+    box_rect = pygame.Rect(WIDTH//2 + 60, HEIGHT//2 + 40, 50, 50)
+    box_alive = True
+    box_hit_anim = 0
+    # Animatie text
+    instr_anim = 0
+    instr_anim_dir = 1
+    while running:
+        t = pygame.time.get_ticks()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if show_ready and event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_y):
+                    ready_confirmed = True
+        keys = pygame.key.get_pressed()
+        prev_pos = character.rect.topleft
+        # Miscare smooth si diagonala in tutorial, viteza mai mica
+        character.handle_input(keys, dt=0.5, allow_attack=not show_door)
+        if character.rect.topleft != prev_pos:
+            move_done = True
+            # Efect de particule la miscare
+            for _ in range(3):
+                particles.append({
+                    'x': character.rect.centerx,
+                    'y': character.rect.bottom,
+                    'vx': random.uniform(-1,1),
+                    'vy': random.uniform(1,2),
+                    'life': random.randint(12,18),
+                    'color': (180,180,255)
+                })
+        # Detecteaza atac pe cutie
+        if box_alive and (keys[pygame.K_x] or keys[pygame.K_f]) and character.rect.colliderect(box_rect):
+            box_alive = False
+            box_hit_anim = 12
+            # Efect de particule la cutie
+            for _ in range(18):
+                particles.append({
+                    'x': box_rect.centerx,
+                    'y': box_rect.centery,
+                    'vx': random.uniform(-2,2),
+                    'vy': random.uniform(-2,2),
+                    'life': random.randint(16,24),
+                    'color': (255,200,80)
+                })
+            kick_done = True
+        # Show door if both actions done
+        if move_done and kick_done:
+            show_door = True
+        # If at door, show ready prompt
+        if show_door and character.rect.colliderect(door_rect):
+            show_ready = True
+        # Update particule
+        for p in particles[:]:
+            p['x'] += p['vx']
+            p['y'] += p['vy']
+            p['vy'] += 0.12  # gravitate
+            p['life'] -= 1
+            if p['life'] <= 0:
+                particles.remove(p)
+        # Draw animated background
+        draw_animated_bg(tutorial_bg, t)
+        screen.blit(tutorial_bg, (0, 0))
+        # Draw box obstacle cu efect de glow si bounce
+        if box_alive:
+            pulse = 1.0 + 0.08*math.sin(t*0.02)
+            box_rect_anim = box_rect.inflate(int(8*pulse), int(8*pulse))
+            glow_surf = pygame.Surface((box_rect_anim.width+24, box_rect_anim.height+24), pygame.SRCALPHA)
+            for r in range(18,0,-4):
+                alpha = int(18 + 12*r)
+                rect = glow_surf.get_rect().inflate(-r, -r)
+                pygame.draw.ellipse(glow_surf, (255,220,80,alpha), rect)
+            screen.blit(glow_surf, (box_rect_anim.x-12, box_rect_anim.y-12), special_flags=pygame.BLEND_RGBA_ADD)
+            pygame.draw.rect(screen, (200,140,60), box_rect_anim, border_radius=10)
+            pygame.draw.rect(screen, (255,220,120), box_rect_anim, 3, border_radius=10)
+            # Animatie "pulse" la instructiune
+            if not kick_done and move_done:
+                pygame.draw.rect(screen, (255,255,80,80), box_rect_anim.inflate(16,16), border_radius=14)
+        elif box_hit_anim > 0:
+            # Cutia "explodeaza" in particule
+            box_hit_anim -= 1
+        # Draw door cu efect de glow si animatie de deschidere
+        if show_door:
+            door_anim = 1.0 + 0.08*math.sin(t*0.018)
+            door_rect_anim = door_rect.inflate(int(8*door_anim), int(8*door_anim))
+            glow = pygame.Surface((door_rect_anim.width+30, door_rect_anim.height+30), pygame.SRCALPHA)
+            for r in range(24,0,-6):
+                alpha = int(18 + 10*r)
+                rect = glow.get_rect().inflate(-r, -r)
+                pygame.draw.ellipse(glow, door_glow + (alpha,), rect)
+            screen.blit(glow, (door_rect_anim.x-15, door_rect_anim.y-15), special_flags=pygame.BLEND_RGBA_ADD)
+            pygame.draw.rect(screen, door_color, door_rect_anim, border_radius=14)
+            pygame.draw.rect(screen, (255,220,120), door_rect_anim, 4, border_radius=14)
+        # Draw character
+        character.draw(screen)
+        # Draw particles
+        for p in particles:
+            pygame.draw.circle(screen, p['color'], (int(p['x']), int(p['y'])), 3)
+        # Animated tutorial instructions
+        instr_font = pygame.font.SysFont(None, 38, bold=True)
+        instr_anim += 0.12 * instr_anim_dir
+        if instr_anim > 1.5 or instr_anim < -1.5:
+            instr_anim_dir *= -1
+        # Efect de glow la text
+        def draw_glow_text(txt, pos, color, glow_color=(255,255,120)):
+            for dx in range(-2,3):
+                for dy in range(-2,3):
+                    if dx==0 and dy==0: continue
+                    surf = instr_font.render(txt, True, glow_color)
+                    screen.blit(surf, (pos[0]+dx, pos[1]+dy))
+            surf = instr_font.render(txt, True, color)
+            screen.blit(surf, pos)
+        if not move_done:
+            instr = "Foloseste sagetile sau WASD pentru a te misca"
+            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
+        elif not kick_done:
+            instr = "Apasa X sau F pentru a ataca cutia!"
+            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
+        elif not show_ready:
+            instr = "Mergi la usa pentru a continua!"
+            draw_glow_text(instr, (WIDTH//2 - instr_font.size(instr)[0]//2, 60 + int(10*math.sin(instr_anim))), (255,255,200))
+        if show_ready:
+            # Fade in effect
+            ready_font = pygame.font.SysFont(None, 60, bold=True)
+            ready_msg = "Are you ready?"
+            ready = ready_font.render(ready_msg, True, (255, 215, 0))
+            screen.blit(ready, (WIDTH//2 - ready.get_width()//2, HEIGHT//2 - 120))
+            sub = instr_font.render("Apasa ENTER sau SPACE pentru a incepe lupta!", True, (255,255,255))
+            screen.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2 - 60))
+        pygame.display.flip()
+        clock.tick(60)
+        if ready_confirmed:
+            running = False
+
+# Rulare tutorial inainte de boss fight
+run_tutorial(screen, font, character)
 
 # Add this function to tint a surface red (for boss)
 def tint_surface_red(surface, intensity=0.4):
