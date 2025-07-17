@@ -4,6 +4,9 @@ import sys
 import random
 import math
 from character import Character
+import httpx
+import asyncio
+ 
 
 
 # Initialize Pygame
@@ -148,7 +151,7 @@ background_img = pygame.transform.scale(background_img, (WIDTH, HEIGHT))
 idle_img = pygame.image.load(os.path.join(IMG_DIR, "idle.png"))
 fight_img = pygame.image.load(os.path.join(IMG_DIR, "fight-v2.png"))
 kick_img = pygame.image.load(os.path.join(IMG_DIR, "kick-v1.png"))
-boss_img = pygame.image.load(os.path.join(IMG_DIR, "king.png"))  # Boss image
+boss_img = pygame.image.load(os.path.join(IMG_DIR, "goose.png"))  # Boss image
 door_img = pygame.image.load(os.path.join(IMG_DIR, "USA.png"))  # Door image
 # Load and resize key sprite (very small)
 key_img = pygame.image.load(os.path.join(IMG_DIR, "cheie.png"))
@@ -183,7 +186,7 @@ boss_max_health = 100
 boss_speed = 1  # mai incet
 boss_direction = -1  # -1 = left, 1 = right
 boss_move_timer = 0
-BOSS_MOVE_INTERVAL = 1200  # ms
+BOSS_MOVE_INTERVAL = 1300  # ms
 enemy_felled = False
 
 
@@ -191,12 +194,13 @@ enemy_felled = False
 # Player health
 player_health = 100
 player_max_health = 100
+score = 0  # Scorul jucătorului
 
 # Red balls (projectiles) thrown by boss
 projectiles = []  # Each projectile: {'rect': pygame.Rect, 'vx': float, 'vy': float}
-PROJECTILE_SPEED = 4  # px per frame (aprox 240 px/sec at 60fps)
-PROJECTILE_SIZE = 20
-PROJECTILE_COOLDOWN = 2200  # ms, delay mai mare
+PROJECTILE_SPEED = 5  # px per frame (aprox 240 px/sec at 60fps)
+PROJECTILE_SIZE = 15
+PROJECTILE_COOLDOWN = 1400  # ms, delay mai mare
 last_projectile_time = 0
 
 # Clock
@@ -233,6 +237,22 @@ player_hit_timer = 0
 # Add a timer for boss contact damage
 BOSS_CONTACT_COOLDOWN = 1200  # ms
 boss_contact_last_time = 0
+
+async def send_score_to_api(player_name, score):
+    async with httpx.AsyncClient(timeout=3) as client:
+        try:
+            response = await client.post(
+                "http://127.0.0.1:8000/scores/",
+                json={"player": player_name, "score": score}
+            )
+            if response.status_code == 200:
+                print(f"Scor trimis cu succes: {response.json()}")
+            else:
+                print(f"Eroare la trimitere scor: {response.status_code}")
+        except Exception as e:
+            print(f"Exceptie la trimitere scor: {e}")
+
+score_sent = False  # Prevent multiple score submissions
 
 # Game loop
 while True:
@@ -325,7 +345,15 @@ while True:
             projectiles.remove(proj)
             if player_health < 0:
                 player_health = 0
+        # Daca playerul evita proiectilul, creste scorul
+        elif (proj['rect'].colliderect(boss_rect) and boss_health > 0):
+            score += 1
 
+    # Trimite scorul DOAR la game over, o singura data
+    if player_health <= 0 and not score_sent:
+        asyncio.run(send_score_to_api(player_name, score))
+        score_sent = True
+        print(f"Scorul a fost trimis! ({player_name}: {score})")
     # Player hit effect timer (immunity)
     if player_hit and pygame.time.get_ticks() - player_hit_timer > PLAYER_HIT_DURATION:
         player_hit = False
@@ -356,23 +384,24 @@ while True:
             boss_hit = False
             screen.blit(boss_img, boss_rect)
 
-        # Draw boss health bar at the top center
-        bar_width = 400
-        bar_height = 20
-        bar_x = (WIDTH - bar_width) // 2
-        bar_y = 30
-        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            (bar_x, bar_y, int(bar_width * (boss_health / boss_max_health)), bar_height)
-        )
-        boss_label = font.render("Costin", True, (255, 255, 255))
-        label_rect = boss_label.get_rect()
-        label_rect.midright = (bar_x - 10, bar_y + bar_height // 2)
-        screen.blit(boss_label, label_rect)
+    # Draw boss health bar at the top center
+    bar_width = 400
+    bar_height = 20
+    bar_x = (WIDTH - bar_width) // 2
+    bar_y = 30
+    pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+    pygame.draw.rect(
+        screen,
+        (0, 255, 0),
+        (bar_x, bar_y, int(bar_width * (boss_health / boss_max_health)), bar_height)
+    )
+    boss_label = font.render("Boss", True, (255, 255, 255))
+    label_rect = boss_label.get_rect()
+    label_rect.midright = (bar_x - 10, bar_y + bar_height // 2)
+    screen.blit(boss_label, label_rect)
+    send_score_to_api(player_name, score)
 
-    else:
+    if boss_health <= 0:
         # Draw key falling from above after boss defeated (simulate key drop)
         global key_y, key_obtained
         if 'key_y' not in globals():
@@ -445,6 +474,9 @@ while True:
         sub_font = pygame.font.SysFont(None, 40)
         sub_text = sub_font.render("Press R to restart or ESC to quit", True, (255, 255, 255))
         screen.blit(sub_text, (WIDTH//2 - sub_text.get_width()//2, HEIGHT//2 - 40))
+        if score_sent:
+            sent_text = sub_font.render(f"Scorul a fost trimis! ({player_name}: {score})", True, (0, 255, 0))
+            screen.blit(sent_text, (WIDTH//2 - sent_text.get_width()//2, HEIGHT//2 + 40))
     else:
         # Player hit visual effect (tint red only on sprite)
         if player_hit:
@@ -486,6 +518,7 @@ while True:
                 player_hit_timer = 0
                 boss_hit = False
                 boss_hit_timer = 0
+                score_sent = False
 
 
 
